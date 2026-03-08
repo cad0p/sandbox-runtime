@@ -259,6 +259,19 @@ function generateReadRules(
     }
   }
 
+  // Allow stat/lstat on all directories so that realpath() can traverse
+  // path components within denied regions. Without this, C realpath() fails
+  // when resolving symlinks because it needs to lstat every intermediate
+  // directory (e.g. /Users, /Users/chris) even if only a subdirectory like
+  // ~/.local is in allowWithinDeny. This only allows metadata reads on
+  // directories — not listing contents (readdir) or reading files.
+  if ((config.denyOnly).length > 0) {
+    rules.push(
+      `(allow file-read-metadata`,
+      `  (vnode-type DIRECTORY))`,
+    )
+  }
+
   // Block file movement to prevent bypass via mv/rename
   rules.push(...generateMoveBlockingRules(config.denyOnly || [], logTag))
 
