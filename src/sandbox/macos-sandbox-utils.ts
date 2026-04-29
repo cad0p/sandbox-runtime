@@ -36,6 +36,8 @@ export interface MacOSSandboxParams {
   allowGitConfig?: boolean
   enableWeakerNetworkIsolation?: boolean
   binShell?: string
+  autoAllowTmpdir?: boolean
+  userAllowWrite?: string[]
 }
 
 /**
@@ -267,11 +269,8 @@ function generateReadRules(
   // directory (e.g. /Users, /Users/chris) even if only a subdirectory like
   // ~/.local is in allowWithinDeny. This only allows metadata reads on
   // directories — not listing contents (readdir) or reading files.
-  if ((config.denyOnly).length > 0) {
-    rules.push(
-      `(allow file-read-metadata`,
-      `  (vnode-type DIRECTORY))`,
-    )
+  if (config.denyOnly.length > 0) {
+    rules.push(`(allow file-read-metadata`, `  (vnode-type DIRECTORY))`)
   }
 
   // Block file movement to prevent bypass via mv/rename
@@ -321,6 +320,8 @@ function generateWriteRules(
   config: FsWriteRestrictionConfig | undefined,
   logTag: string,
   allowGitConfig = false,
+  autoAllowTmpdir = true,
+  userAllowWrite: string[] = [],
 ): string[] {
   if (!config) {
     return [`(allow file-write*)`]
@@ -328,15 +329,27 @@ function generateWriteRules(
 
   const rules: string[] = []
 
-  // Automatically allow TMPDIR parent on macOS when write restrictions are enabled
-  const tmpdirParents = getTmpdirParentIfMacOSPattern()
-  for (const tmpdirParent of tmpdirParents) {
-    const normalizedPath = normalizePathForSandbox(tmpdirParent)
-    rules.push(
-      `(allow file-write*`,
-      `  (subpath ${escapePath(normalizedPath)})`,
-      `  (with message "${logTag}"))`,
+  // Automatically allow TMPDIR on macOS when write restrictions are enabled.
+  // This is skipped when autoAllowTmpdir is false, or when the sandbox runtime's
+  // override TMPDIR is already covered by the user's configured allowWrite paths.
+  if (autoAllowTmpdir) {
+    const overrideTmpdir = process.env.CLAUDE_TMPDIR || '/tmp/claude'
+    const isOverrideCovered = isPathCoveredByAllowList(
+      overrideTmpdir,
+      userAllowWrite,
     )
+
+    if (!isOverrideCovered) {
+      const tmpdirPaths = getTmpdirIfMacOSPattern()
+      for (const tmpdirPath of tmpdirPaths) {
+        const normalizedPath = normalizePathForSandbox(tmpdirPath)
+        rules.push(
+          `(allow file-write*`,
+          `  (subpath ${escapePath(normalizedPath)})`,
+          `  (with message "${logTag}"))`,
+        )
+      }
+    }
   }
 
   // Generate allow rules
@@ -410,6 +423,8 @@ function generateSandboxProfile({
   allowBrowserProcess = false,
   allowGitConfig = false,
   enableWeakerNetworkIsolation = false,
+  autoAllowTmpdir = true,
+  userAllowWrite = [],
   logTag,
 }: {
   readConfig: FsReadRestrictionConfig | undefined
@@ -424,6 +439,8 @@ function generateSandboxProfile({
   allowBrowserProcess?: boolean
   allowGitConfig?: boolean
   enableWeakerNetworkIsolation?: boolean
+  autoAllowTmpdir?: boolean
+  userAllowWrite?: string[]
   logTag: string
 }): string {
   const profile: string[] = [
@@ -667,7 +684,15 @@ function generateSandboxProfile({
 
   // Write rules
   profile.push('; File write')
-  profile.push(...generateWriteRules(writeConfig, logTag, allowGitConfig))
+  profile.push(
+    ...generateWriteRules(
+      writeConfig,
+      logTag,
+      allowGitConfig,
+      autoAllowTmpdir,
+      userAllowWrite,
+    ),
+  )
 
   // Pseudo-terminal (pty) support
   if (allowPty) {
@@ -709,19 +734,33 @@ function generateSandboxProfile({
   if (allowBrowserProcess) {
     profile.push('')
     profile.push('; Browser process support (Chrome/Chromium)')
-    profile.push('; All Mach operations — Chrome requires bootstrap registration')
-    profile.push('; (Crashpad), service lookups (window server, CoreDisplay, GPU),')
-    profile.push('; task ports, and cross-domain lookups that vary by OS version')
+    profile.push(
+      '; All Mach operations — Chrome requires bootstrap registration',
+    )
+    profile.push(
+      '; (Crashpad), service lookups (window server, CoreDisplay, GPU),',
+    )
+    profile.push(
+      '; task ports, and cross-domain lookups that vary by OS version',
+    )
     profile.push('(allow mach*)')
     profile.push('')
-    profile.push('; Process info for all processes — Chrome manages renderer, GPU,')
-    profile.push('; utility, and crashpad child processes outside the same sandbox')
+    profile.push(
+      '; Process info for all processes — Chrome manages renderer, GPU,',
+    )
+    profile.push(
+      '; utility, and crashpad child processes outside the same sandbox',
+    )
     profile.push('(allow process-info*)')
     profile.push('')
-    profile.push('; Broader IOKit access — needed for GPU process and display management')
+    profile.push(
+      '; Broader IOKit access — needed for GPU process and display management',
+    )
     profile.push('(allow iokit-open)')
     profile.push('')
-    profile.push('; Shared memory with non-sandboxed processes (e.g. renderer ↔ GPU)')
+    profile.push(
+      '; Shared memory with non-sandboxed processes (e.g. renderer ↔ GPU)',
+    )
     profile.push('(allow ipc-posix-shm*)')
   }
 
@@ -736,10 +775,37 @@ function escapePath(pathStr: string): string {
 }
 
 /**
- * Get TMPDIR parent directory if it matches macOS pattern /var/folders/XX/YYY/T/
- * Returns both /var/ and /private/var/ versions since /var is a symlink
+ * Check if a path is covered by any entry in an allow list.
+ * Supports literal prefix matching and glob patterns.
  */
-function getTmpdirParentIfMacOSPattern(): string[] {
+function isPathCoveredByAllowList(
+  targetPath: string,
+  allowList: string[],
+): boolean {
+  const normalizedTarget = normalizePathForSandbox(targetPath)
+  for (const allowed of allowList) {
+    const normalizedAllowed = normalizePathForSandbox(allowed)
+    if (containsGlobChars(normalizedAllowed)) {
+      const regex = new RegExp(globToRegex(normalizedAllowed))
+      if (regex.test(normalizedTarget)) return true
+    } else {
+      if (
+        normalizedTarget === normalizedAllowed ||
+        normalizedTarget.startsWith(normalizedAllowed + '/')
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * Get TMPDIR directory if it matches macOS pattern /var/folders/XX/YYY/T/
+ * Returns the T/ directory itself (not its parent) to avoid overbroad permissions.
+ * Returns both /var/ and /private/var/ versions since /var is a symlink.
+ */
+function getTmpdirIfMacOSPattern(): string[] {
   const tmpdir = process.env.TMPDIR
   if (!tmpdir) return []
 
@@ -748,16 +814,18 @@ function getTmpdirParentIfMacOSPattern(): string[] {
   )
   if (!match) return []
 
-  const parent = tmpdir.replace(/\/T\/?$/, '')
+  // Return the T/ directory itself, not its parent, to avoid granting
+  // write access to sibling directories like C/ and 0/.
+  const normalized = tmpdir.replace(/\/?$/, '/')
 
   // Return both /var/ and /private/var/ versions since /var is a symlink
-  if (parent.startsWith('/private/var/')) {
-    return [parent, parent.replace('/private', '')]
-  } else if (parent.startsWith('/var/')) {
-    return [parent, '/private' + parent]
+  if (normalized.startsWith('/private/var/')) {
+    return [normalized, normalized.replace('/private', '')]
+  } else if (normalized.startsWith('/var/')) {
+    return [normalized, '/private' + normalized]
   }
 
-  return [parent]
+  return [normalized]
 }
 
 /**
@@ -781,6 +849,8 @@ export function wrapCommandWithSandboxMacOS(
     allowGitConfig = false,
     enableWeakerNetworkIsolation = false,
     binShell,
+    autoAllowTmpdir = true,
+    userAllowWrite = [],
   } = params
 
   // Determine if we have restrictions to apply
@@ -813,6 +883,8 @@ export function wrapCommandWithSandboxMacOS(
     allowBrowserProcess,
     allowGitConfig,
     enableWeakerNetworkIsolation,
+    autoAllowTmpdir,
+    userAllowWrite,
     logTag,
   })
 

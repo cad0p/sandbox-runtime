@@ -232,6 +232,14 @@ export const SandboxRuntimeConfigSchema = z.object({
         'that spawn a Chrome/Chromium subprocess. Without this, Chrome will crash on startup ' +
         'due to denied Mach service lookups and bootstrap registrations.',
     ),
+  autoAllowTmpdir: z
+    .boolean()
+    .optional()
+    .describe(
+      'Automatically allow writes to the macOS TMPDIR directory when write restrictions are enabled (default: true). ' +
+        'When true, the sandbox profile allows writes to the T/ subdirectory of the system temp folder. ' +
+        'Set to false to disable this behavior and rely solely on configured allowWrite paths.',
+    ),
   seccomp: SeccompConfigSchema.optional().describe(
     'Custom seccomp binary paths (Linux only).',
   ),
