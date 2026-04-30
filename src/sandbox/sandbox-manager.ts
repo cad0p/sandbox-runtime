@@ -483,6 +483,10 @@ function getAllowGitConfig(): boolean {
   return config?.filesystem?.allowGitConfig ?? false
 }
 
+function getAllowGitHooks(): boolean {
+  return config?.filesystem?.allowGitHooks ?? false
+}
+
 function getSeccompConfig():
   | { bpfPath?: string; applyPath?: string }
   | undefined {
@@ -636,6 +640,7 @@ async function wrapWithSandbox(
         allowPty,
         allowBrowserProcess,
         allowGitConfig: getAllowGitConfig(),
+        allowGitHooks: getAllowGitHooks(),
         enableWeakerNetworkIsolation: getEnableWeakerNetworkIsolation(),
         binShell,
         autoAllowTmpdir:
@@ -668,6 +673,7 @@ async function wrapWithSandbox(
         ripgrepConfig: getRipgrepConfig(),
         mandatoryDenySearchDepth: getMandatoryDenySearchDepth(),
         allowGitConfig: getAllowGitConfig(),
+        allowGitHooks: getAllowGitHooks(),
         seccompConfig: getSeccompConfig(),
         abortSignal,
       })
