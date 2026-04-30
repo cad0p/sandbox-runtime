@@ -34,6 +34,7 @@ export interface MacOSSandboxParams {
   allowPty?: boolean
   allowBrowserProcess?: boolean
   allowGitConfig?: boolean
+  allowGitHooks?: boolean
   enableWeakerNetworkIsolation?: boolean
   binShell?: string
   autoAllowTmpdir?: boolean
@@ -44,7 +45,7 @@ export interface MacOSSandboxParams {
  * Get mandatory deny patterns as glob patterns (no filesystem scanning).
  * macOS sandbox profile supports regex/glob matching directly via globToRegex().
  */
-export function macGetMandatoryDenyPatterns(allowGitConfig = false): string[] {
+export function macGetMandatoryDenyPatterns(allowGitConfig = false, allowGitHooks = false): string[] {
   const cwd = process.cwd()
   const denyPaths: string[] = []
 
@@ -60,9 +61,11 @@ export function macGetMandatoryDenyPatterns(allowGitConfig = false): string[] {
     denyPaths.push(`**/${dirName}/**`)
   }
 
-  // Git hooks are always blocked for security
-  denyPaths.push(path.resolve(cwd, '.git/hooks'))
-  denyPaths.push('**/.git/hooks/**')
+  // Git hooks are blocked for security unless explicitly allowed
+  if (!allowGitHooks) {
+    denyPaths.push(path.resolve(cwd, '.git/hooks'))
+    denyPaths.push('**/.git/hooks/**')
+  }
 
   // Git config - conditionally blocked based on allowGitConfig setting
   if (!allowGitConfig) {
@@ -320,6 +323,7 @@ function generateWriteRules(
   config: FsWriteRestrictionConfig | undefined,
   logTag: string,
   allowGitConfig = false,
+  allowGitHooks = false,
   autoAllowTmpdir = true,
   userAllowWrite: string[] = [],
 ): string[] {
@@ -377,7 +381,7 @@ function generateWriteRules(
   // Combine user-specified and mandatory deny patterns (no ripgrep needed on macOS)
   const denyPaths = [
     ...(config.denyWithinAllow || []),
-    ...macGetMandatoryDenyPatterns(allowGitConfig),
+    ...macGetMandatoryDenyPatterns(allowGitConfig, allowGitHooks),
   ]
 
   for (const pathPattern of denyPaths) {
@@ -847,6 +851,7 @@ export function wrapCommandWithSandboxMacOS(
     allowPty,
     allowBrowserProcess = false,
     allowGitConfig = false,
+    allowGitHooks = false,
     enableWeakerNetworkIsolation = false,
     binShell,
     autoAllowTmpdir = true,
