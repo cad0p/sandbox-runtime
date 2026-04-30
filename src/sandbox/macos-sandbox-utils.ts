@@ -426,6 +426,7 @@ function generateSandboxProfile({
   allowPty,
   allowBrowserProcess = false,
   allowGitConfig = false,
+  allowGitHooks = false,
   enableWeakerNetworkIsolation = false,
   autoAllowTmpdir = true,
   userAllowWrite = [],
@@ -442,6 +443,7 @@ function generateSandboxProfile({
   allowPty?: boolean
   allowBrowserProcess?: boolean
   allowGitConfig?: boolean
+  allowGitHooks?: boolean
   enableWeakerNetworkIsolation?: boolean
   autoAllowTmpdir?: boolean
   userAllowWrite?: string[]
@@ -693,6 +695,7 @@ function generateSandboxProfile({
       writeConfig,
       logTag,
       allowGitConfig,
+      allowGitHooks,
       autoAllowTmpdir,
       userAllowWrite,
     ),
@@ -887,6 +890,7 @@ export function wrapCommandWithSandboxMacOS(
     allowPty,
     allowBrowserProcess,
     allowGitConfig,
+    allowGitHooks,
     enableWeakerNetworkIsolation,
     autoAllowTmpdir,
     userAllowWrite,
