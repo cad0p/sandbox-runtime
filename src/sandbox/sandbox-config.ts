@@ -142,6 +142,12 @@ export const FilesystemConfigSchema = z.object({
     .describe(
       'Allow writes to .git/config files (default: false). Enables git remote URL updates while keeping .git/hooks protected.',
     ),
+  allowGitHooks: z
+    .boolean()
+    .optional()
+    .describe(
+      'Allow writes to .git/hooks files (default: false). Enables git clone/init operations. Only enable for trusted repositories.',
+    ),
 })
 
 /**
