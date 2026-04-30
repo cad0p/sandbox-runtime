@@ -638,6 +638,9 @@ async function wrapWithSandbox(
         allowGitConfig: getAllowGitConfig(),
         enableWeakerNetworkIsolation: getEnableWeakerNetworkIsolation(),
         binShell,
+        autoAllowTmpdir:
+          customConfig?.autoAllowTmpdir ?? config?.autoAllowTmpdir ?? true,
+        userAllowWrite,
       })
 
     case 'linux':
