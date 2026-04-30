@@ -53,6 +53,8 @@ export interface LinuxSandboxParams {
   mandatoryDenySearchDepth?: number
   /** Allow writes to .git/config files (default: false) */
   allowGitConfig?: boolean
+  /** Allow writes to .git/hooks files (default: false) */
+  allowGitHooks?: boolean
   /** Custom seccomp binary paths */
   seccompConfig?: { bpfPath?: string; applyPath?: string }
   /** Abort signal to cancel the ripgrep scan */
@@ -165,6 +167,7 @@ async function linuxGetMandatoryDenyPaths(
   ripgrepConfig: { command: string; args?: string[] } = { command: 'rg' },
   maxDepth: number = DEFAULT_MANDATORY_DENY_SEARCH_DEPTH,
   allowGitConfig = false,
+  allowGitHooks = false,
   abortSignal?: AbortSignal,
 ): Promise<string[]> {
   const cwd = process.cwd()
@@ -195,8 +198,10 @@ async function linuxGetMandatoryDenyPaths(
   }
 
   if (dotGitIsDirectory) {
-    // Git hooks always blocked for security
-    denyPaths.push(path.resolve(cwd, '.git/hooks'))
+    // Git hooks blocked for security unless explicitly allowed
+    if (!allowGitHooks) {
+      denyPaths.push(path.resolve(cwd, '.git/hooks'))
+    }
 
     // Git config conditionally blocked based on allowGitConfig setting
     if (!allowGitConfig) {
@@ -639,6 +644,7 @@ async function generateFilesystemArgs(
   ripgrepConfig: { command: string; args?: string[] } = { command: 'rg' },
   mandatoryDenySearchDepth: number = DEFAULT_MANDATORY_DENY_SEARCH_DEPTH,
   allowGitConfig = false,
+  allowGitHooks = false,
   abortSignal?: AbortSignal,
 ): Promise<string[]> {
   const args: string[] = []
@@ -710,6 +716,7 @@ async function generateFilesystemArgs(
         ripgrepConfig,
         mandatoryDenySearchDepth,
         allowGitConfig,
+        allowGitHooks,
         abortSignal,
       )),
     ]
@@ -955,6 +962,7 @@ export async function wrapCommandWithSandboxLinux(
     ripgrepConfig = { command: 'rg' },
     mandatoryDenySearchDepth = DEFAULT_MANDATORY_DENY_SEARCH_DEPTH,
     allowGitConfig = false,
+    allowGitHooks = false,
     seccompConfig,
     abortSignal,
   } = params
@@ -1088,6 +1096,7 @@ export async function wrapCommandWithSandboxLinux(
       ripgrepConfig,
       mandatoryDenySearchDepth,
       allowGitConfig,
+      allowGitHooks,
       abortSignal,
     )
     bwrapArgs.push(...fsArgs)
