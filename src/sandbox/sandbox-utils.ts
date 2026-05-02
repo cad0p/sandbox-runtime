@@ -302,7 +302,13 @@ export function generateProxyEnvVars(
 ): string[] {
   // Respect CLAUDE_TMPDIR if set, otherwise default to /tmp/claude
   const tmpdir = process.env.CLAUDE_TMPDIR || '/tmp/claude'
-  const envVars: string[] = [`SANDBOX_RUNTIME=1`, `TMPDIR=${tmpdir}`]
+  const envVars: string[] = [
+    `SANDBOX_RUNTIME=1`,
+    `TMPDIR=${tmpdir}`,
+    // Prevent git/ssh from prompting for credentials inside the sandbox
+    `GIT_TERMINAL_PROMPT=0`,
+    `SSH_ASKPASS_REQUIRE=never`,
+  ]
 
   // If no proxy ports provided, return minimal env vars
   if (!httpProxyPort && !socksProxyPort) {

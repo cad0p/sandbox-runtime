@@ -618,6 +618,10 @@ async function wrapWithSandbox(
   const allowBrowserProcess =
     customConfig?.allowBrowserProcess ?? config?.allowBrowserProcess
 
+  // Inject pipefail so piped commands propagate the first failure's exit code.
+  // Works with multiline commands since it's passed to bash -c.
+  command = `set -o pipefail; ${command}`
+
   switch (platform) {
     case 'macos':
       // macOS sandbox profile supports glob patterns directly, no ripgrep needed
